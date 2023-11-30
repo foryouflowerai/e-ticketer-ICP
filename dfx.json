@@ -1,0 +1,30 @@
+{
+  "canisters": {
+    "e_ticketer_backend": {
+      "candid": "src/e_ticketer_backend/e_ticketer_backend.did",
+      "package": "e_ticketer_backend",
+      "type": "rust"
+    },
+    "e_ticketer_frontend": {
+      "dependencies": [
+        "e_ticketer_backend"
+      ],
+      "frontend": {
+        "entrypoint": "src/e_ticketer_frontend/src/index.html"
+      },
+      "source": [
+        "src/e_ticketer_frontend/assets",
+        "dist/e_ticketer_frontend/"
+      ],
+      "type": "assets"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}

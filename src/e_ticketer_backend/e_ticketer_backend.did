@@ -1,0 +1,64 @@
+type Error = variant { NotFound : record { msg : text } };
+type Event = record {
+  id : nat64;
+  updated_at : opt nat64;
+  date : text;
+  attendee_ids : vec nat64;
+  name : text;
+  description : text;
+  created_at : nat64;
+  start_time : text;
+  location : text;
+};
+type EventPayload = record {
+  date : text;
+  name : text;
+  description : text;
+  start_time : text;
+  location : text;
+};
+type Result = variant { Ok; Err : Error };
+type Result_1 = variant { Ok : Event; Err : Error };
+type Result_2 = variant { Ok : vec User; Err : Error };
+type Result_3 = variant { Ok : Ticket; Err : Error };
+type Result_4 = variant { Ok : User; Err : Error };
+type Result_5 = variant { Ok : vec Event; Err : Error };
+type Result_6 = variant { Ok : vec Ticket; Err : Error };
+type Ticket = record {
+  id : nat64;
+  updated_at : opt nat64;
+  created_at : nat64;
+  user_id : nat64;
+  event_id : nat64;
+};
+type TicketPayload = record { user_id : nat64; event_id : nat64 };
+type User = record {
+  id : nat64;
+  event_ids : vec nat64;
+  updated_at : opt nat64;
+  password : text;
+  name : text;
+  created_at : nat64;
+  email : text;
+  ticket_ids : vec nat64;
+};
+type UserPayload = record { password : text; name : text; email : text };
+service : {
+  create_event : (EventPayload) -> (nat64);
+  create_ticket : (TicketPayload) -> (nat64);
+  create_user : (UserPayload) -> (nat64);
+  delete_event : (nat64) -> (Result);
+  delete_ticket : (nat64) -> (Result);
+  delete_user : (nat64) -> (Result);
+  get_all_events : () -> (vec Event) query;
+  get_event : (nat64) -> (Result_1) query;
+  get_event_attendees : (nat64) -> (Result_2) query;
+  get_ticket : (nat64) -> (Result_3) query;
+  get_user : (nat64) -> (Result_4) query;
+  get_user_events : (nat64) -> (Result_5) query;
+  get_user_tickets : (nat64) -> (Result_6) query;
+  remove_user_ticket : (nat64, nat64) -> (Result);
+  update_event : (nat64, EventPayload) -> (Result);
+  update_ticket : (nat64, TicketPayload) -> (Result);
+  update_user : (nat64, UserPayload) -> (Result);
+}

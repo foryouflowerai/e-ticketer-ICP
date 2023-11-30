@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "src/e_ticketer_backend",
+]
+resolver = "2"
