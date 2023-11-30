@@ -1,8 +1,130 @@
-# e_ticketer
+# E-Ticketer-ICP
 
-Welcome to your new e_ticketer project and to the internet computer development community. By default, creating a new project adds this README and some template files to your project directory. You can edit these template files to customize your project and to include your own code to speed up the development cycle.
+## Overview
 
-To get started, you might want to explore the project directory structure and the default configuration file. Working with this project in your development environment will not affect any production deployment or identity tokens.
+This is a comprehensive ticketing system smart contract, providing a variety of functions for managing events, users, and tickets. The use of stable data structures and Candid serialization for compatibility with the Internet Computer framework. The design is modular, with distinct functions for different aspects of the ticketing system, supporting CRUD operations and relationship management.
+
+## Prerequisites
+
+- Rust
+- Internet Computer SDK
+- IC CDK
+
+## Installation
+
+1. **Clone the repository:**
+
+    ```bash
+    git clone https://github.com/foryouflowerai/e-ticketer-ICP.git
+    cd e-ticketer-ICP
+    ```
+
+## Data Structure
+
+### Type Aliases
+
+- `Memory`: Alias for `VirtualMemory<DefaultMemoryImpl>`.
+- `IdCell`: Alias for `Cell<u64, Memory>`.
+
+### Struct Definitions
+
+- `Event`, `User`, `Ticket`: Structs representing Event, User, and Ticket entities.
+  - Implement `CandidType`, `Clone`, `Serialize`, `Deserialize`, and provide default values.
+
+### Trait Implementations
+
+- `Storable` and `BoundedStorable` implemented for `Event`, `User`, and `Ticket`.
+  - `Storable`: Conversion to and from bytes.
+  - `BoundedStorable`: Defines maximum size and whether the size is fixed.
+
+### Thread-Local Static Variables
+
+- `MEMORY_MANAGER`: Manages virtual memory.
+- `ID_COUNTER`: Keeps track of global IDs.
+- `EVENT_STORAGE`, `USER_STORAGE`, `TICKET_STORAGE`: Stable BTreeMaps for storing events, users, and tickets.
+
+### Payload Structs
+
+- `EventPayload`, `UserPayload`, `TicketPayload`: Payload data structures for update calls.
+
+### Candid Interface Definitions
+
+- Functions annotated with `ic_cdk::query` are read-only queries.
+- Functions annotated with `ic_cdk::update` are updates, which can modify the state.
+
+## Memory Management
+
+Memory is allocated using a `MemoryManager` from the `ic-stable-structures` crate:
+
+```rust
+static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> = // initialized
+```
+
+This manages allocating `VirtualMemory` for storages.
+
+## ID Generation
+
+Unique IDs are generated using a thread-local `IdCell`:
+
+```rust
+static ID_COUNTER: RefCell<IdCell> = // initialized
+```
+
+The counter is incremented when adding new records.
+
+## Record Storage
+
+Records are stored in thread-local `StableBTreeMap`s:
+
+```rust
+static EVENT_STORAGE: RefCell<StableBTreeMap<u64, Event>> = // initialized
+
+```
+
+This provides fast random access to records.
+
+## Main Functions
+
+### Event Functions
+
+- `get_all_events()`: Retrieves all events.
+- `get_event(id: u64)`: Retrieves a specific event by ID.
+- `create_event(payload: EventPayload)`: Creates a new event.
+- `update_event(id: u64, payload: EventPayload)`: Updates an existing event.
+- `delete_event(id: u64)`: Deletes an event.
+
+### User Functions
+
+- `get_user(id: u64)`: Retrieves a user by ID.
+- `create_user(payload: UserPayload)`: Creates a new user.
+- `update_user(id: u64, payload: UserPayload)`: Updates an existing user.
+- `delete_user(id: u64)`: Deletes a user.
+
+### Ticket Functions
+
+- `get_ticket(id: u64)`: Retrieves a ticket by ID.
+- `create_ticket(payload: TicketPayload)`: Creates a new ticket.
+- `update_ticket(id: u64, payload: TicketPayload)`: Updates an existing ticket.
+- `delete_ticket(id: u64)`: Deletes a ticket.
+
+### Relationship Functions
+
+- `get_event_attendees(id: u64)`: Retrieves attendees for a specific event.
+- `get_user_tickets(id: u64)`: Retrieves tickets owned by a specific user.
+- `get_event_tickets(id: u64)`: Retrieves tickets associated with a specific event.
+- `remove_user_ticket(payload: TicketPayload)`: Removes a ticket from a user's collection.
+
+## Error Handling
+
+- `Error` enum: Represents errors, particularly the `NotFound` variant used for signaling that a resource with a given ID doesn't exist.
+
+## Candid Interface Export
+
+- `ic_cdk::export_candid!()`: Generates the Candid interface for this canister.
+
+## Note
+
+- The code references external libraries and may be part of a larger project or canister.
 
 To learn more before you start working with e_ticketer, see the following documentation available online:
 

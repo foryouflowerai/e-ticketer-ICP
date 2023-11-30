@@ -20,6 +20,7 @@ struct Event {
     start_time: String,
     location: String,
     attendee_ids: Vec<u64>,
+    ticket_ids: Vec<u64>,
     created_at: u64,
     updated_at: Option<u64>,
 }
@@ -187,6 +188,7 @@ fn create_event(payload: EventPayload) -> u64 {
         start_time: payload.start_time,
         location: payload.location,
         attendee_ids: vec![],
+        ticket_ids: vec![],
         created_at: time(),
         updated_at: None,
     };
@@ -210,6 +212,7 @@ fn update_event(id: u64, payload: EventPayload) -> Result<(), Error> {
         start_time: payload.start_time,
         location: payload.location,
         attendee_ids: event.attendee_ids,
+        ticket_ids: event.ticket_ids,
         created_at: event.created_at,
         updated_at: Some(time()),
     };
@@ -338,6 +341,7 @@ fn create_ticket(payload: TicketPayload) -> u64 {
     TICKET_STORAGE.with(|tickets| tickets.borrow_mut().insert(id, ticket));
     let _ = add_event_attendee(payload.event_id, payload.user_id);
     let _ = add_user_ticket(payload.user_id, id);
+    let _ = add_event_ticket(payload.event_id, id);
 
     id
 }
@@ -411,6 +415,37 @@ fn add_event_attendee(event_id: u64, user_id: u64) -> Result<(), Error> {
         start_time: event.start_time,
         location: event.location,
         attendee_ids: attendees,
+        ticket_ids: event.ticket_ids,
+        created_at: event.created_at,
+        updated_at: Some(time()),
+    };
+
+    EVENT_STORAGE.with(|events| events.borrow_mut().insert(event.id, updated_event));
+
+    Ok(())
+}
+
+fn add_event_ticket(event_id: u64, ticket_id: u64) -> Result<(), Error> {
+    let event = _get_event(&event_id).ok_or(Error::NotFound {
+        msg: format!("event id:{} does not exist", event_id),
+    })?;
+
+    let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
+        msg: format!("ticket id:{} does not exist", ticket_id),
+    })?;
+
+    let mut tickets = event.ticket_ids.clone();
+    tickets.push(ticket.id);
+
+    let updated_event = Event {
+        id: event.id,
+        name: event.name,
+        description: event.description,
+        date: event.date,
+        start_time: event.start_time,
+        location: event.location,
+        attendee_ids: event.attendee_ids,
+        ticket_ids: tickets,
         created_at: event.created_at,
         updated_at: Some(time()),
     };
@@ -429,6 +464,25 @@ fn get_user_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
     let mut tickets = vec![];
 
     for ticket_id in user.ticket_ids {
+        let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
+            msg: format!("ticket id:{} does not exist", ticket_id),
+        })?;
+
+        tickets.push(ticket);
+    }
+
+    Ok(tickets)
+}
+
+#[ic_cdk::query]
+fn get_event_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
+    let event = _get_event(&id).ok_or(Error::NotFound {
+        msg: format!("event id:{} does not exist", id),
+    })?;
+
+    let mut tickets = vec![];
+
+    for ticket_id in event.ticket_ids {
         let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
             msg: format!("ticket id:{} does not exist", ticket_id),
         })?;
