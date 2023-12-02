@@ -82,7 +82,7 @@ impl Storable for Ticket {
     }
 }
 
-// Implement the 'BoundedStorable' trait for 'Event', 'User', and 'Event'
+// Implement the 'BoundedStorable' trait for 'Event', 'User', and 'Ticket'
 impl BoundedStorable for Event {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
@@ -151,6 +151,7 @@ struct TicketPayload {
 // Define the Candid interface
 #[ic_cdk::query]
 fn get_all_events() -> Vec<Event> {
+    // Retrieve all events from the storage and return them as a Vec
     let events_map: Vec<(u64, Event)> =
         EVENT_STORAGE.with(|events| events.borrow().iter().collect());
     events_map.into_iter().map(|(_, event)| event).collect()
@@ -158,6 +159,7 @@ fn get_all_events() -> Vec<Event> {
 
 #[ic_cdk::query]
 fn get_event(id: u64) -> Result<Event, Error> {
+    // Retrieve a specific event by ID and return it, or return a NotFound error if not found
     match _get_event(&id) {
         Some(event) => Ok(event),
         None => Err(Error::NotFound {
@@ -167,12 +169,13 @@ fn get_event(id: u64) -> Result<Event, Error> {
 }
 
 fn _get_event(id: &u64) -> Option<Event> {
+    // Helper function to get an event from the storage based on the provided ID
     EVENT_STORAGE.with(|events| events.borrow().get(id))
 }
 
 #[ic_cdk::update]
-fn create_event(payload: EventPayload) -> u64 {
-    // Increment the global ID counter to get a new ID for the supplier
+fn create_event(payload: EventPayload) -> Result<Event, Error> {
+    // Increment the global ID counter to get a new ID for the event
     let id = ID_COUNTER
         .with(|counter| {
             let current_id = *counter.borrow().get();
@@ -180,9 +183,10 @@ fn create_event(payload: EventPayload) -> u64 {
         })
         .expect("Cannot increment Ids");
 
+    // Create a new Event with the provided payload and the generated ID
     let event = Event {
         id,
-        name: payload.name,
+        name: payload.name.clone(),
         description: payload.description,
         date: payload.date,
         start_time: payload.start_time,
@@ -193,17 +197,23 @@ fn create_event(payload: EventPayload) -> u64 {
         updated_at: None,
     };
 
-    EVENT_STORAGE.with(|events| events.borrow_mut().insert(id, event));
-
-    id
+    // Insert the new event into the storage
+    match EVENT_STORAGE.with(|events| events.borrow_mut().insert(id, event.clone())) {
+        None => Ok(event),
+        Some(_) => Err(Error::NotCreated {
+            msg: format!("event {} could not be created", payload.name),
+        }),
+    }
 }
 
 #[ic_cdk::update]
-fn update_event(id: u64, payload: EventPayload) -> Result<(), Error> {
+fn update_event(id: u64, payload: EventPayload) -> Result<Event, Error> {
+    // Retrieve the existing event with the given ID, or return a NotFound error if not found
     let event = _get_event(&id).ok_or(Error::NotFound {
         msg: format!("event id:{} does not exist", id),
     })?;
 
+    // Create an updated event based on the provided payload
     let updated_event = Event {
         id,
         name: payload.name,
@@ -217,24 +227,32 @@ fn update_event(id: u64, payload: EventPayload) -> Result<(), Error> {
         updated_at: Some(time()),
     };
 
-    EVENT_STORAGE.with(|events| events.borrow_mut().insert(id, updated_event));
-
-    Ok(())
+    // Insert the updated event into the storage
+    match EVENT_STORAGE.with(|events| events.borrow_mut().insert(id, updated_event.clone())) {
+        Some(_) => Ok(updated_event),
+        None => Err(Error::NotCreated {
+            msg: format!("event id:{} could not be updated", id),
+        }),
+    }
 }
 
 #[ic_cdk::update]
-fn delete_event(id: u64) -> Result<(), Error> {
+fn delete_event(id: u64) -> Result<String, Error> {
+    // Check if the event with the given ID exists, or return a NotFound error if not found
     _get_event(&id).ok_or(Error::NotFound {
         msg: format!("event id:{} does not exist", id),
     })?;
 
+    // Remove the event with the given ID from the storage
     EVENT_STORAGE.with(|events| events.borrow_mut().remove(&id));
 
-    Ok(())
+    // Return Ok indicating a successful deletion
+    Ok(format!("event id: {} deleted", id))
 }
 
 #[ic_cdk::query]
 fn get_user(id: u64) -> Result<User, Error> {
+    // Retrieve a specific user by ID and return it, or return a NotFound error if not found
     match _get_user(&id) {
         Some(user) => Ok(user),
         None => Err(Error::NotFound {
@@ -244,12 +262,13 @@ fn get_user(id: u64) -> Result<User, Error> {
 }
 
 fn _get_user(id: &u64) -> Option<User> {
+    // Helper function to get a user from the storage based on the provided ID
     USER_STORAGE.with(|users| users.borrow().get(id))
 }
 
 #[ic_cdk::update]
-fn create_user(payload: UserPayload) -> u64 {
-    // Increment the global ID counter to get a new ID for the supplier
+fn create_user(payload: UserPayload) -> Result<User, Error> {
+    // Increment the global ID counter to get a new ID for the user
     let id = ID_COUNTER
         .with(|counter| {
             let current_id = *counter.borrow().get();
@@ -257,6 +276,7 @@ fn create_user(payload: UserPayload) -> u64 {
         })
         .expect("Cannot increment Ids");
 
+    // Create a new User with the provided payload and the generated ID
     let user = User {
         id,
         name: payload.name,
@@ -268,17 +288,23 @@ fn create_user(payload: UserPayload) -> u64 {
         updated_at: None,
     };
 
-    USER_STORAGE.with(|users| users.borrow_mut().insert(id, user));
-
-    id
+    // Insert the new user into the storage
+    match USER_STORAGE.with(|users| users.borrow_mut().insert(id, user.clone())) {
+        None => Ok(user),
+        Some(_) => Err(Error::NotCreated {
+            msg: format!("user id:{} could not be created", id),
+        }),
+    }
 }
 
 #[ic_cdk::update]
-fn update_user(id: u64, payload: UserPayload) -> Result<(), Error> {
+fn update_user(id: u64, payload: UserPayload) -> Result<User, Error> {
+    // Retrieve the existing user with the given ID, or return a NotFound error if not found
     let user = _get_user(&id).ok_or(Error::NotFound {
         msg: format!("user id:{} does not exist", id),
     })?;
 
+    // Create an updated user based on the provided payload
     let updated_user = User {
         id,
         name: payload.name,
@@ -290,24 +316,32 @@ fn update_user(id: u64, payload: UserPayload) -> Result<(), Error> {
         updated_at: Some(time()),
     };
 
-    USER_STORAGE.with(|users| users.borrow_mut().insert(id, updated_user));
-
-    Ok(())
+    // Insert the updated user into the storage
+    match USER_STORAGE.with(|users| users.borrow_mut().insert(id, updated_user.clone())) {
+        None => Ok(updated_user),
+        Some(_) => Err(Error::NotCreated {
+            msg: format!("user id:{} could not be updated", id),
+        }),
+    }
 }
 
 #[ic_cdk::update]
-fn delete_user(id: u64) -> Result<(), Error> {
+fn delete_user(id: u64) -> Result<String, Error> {
+    // Check if the user with the given ID exists, or return a NotFound error if not found
     _get_user(&id).ok_or(Error::NotFound {
         msg: format!("user id:{} does not exist", id),
     })?;
 
+    // Remove the user with the given ID from the storage
     USER_STORAGE.with(|users| users.borrow_mut().remove(&id));
 
-    Ok(())
+    // Return Ok indicating a successful deletion
+    Ok(format!("user id: {} deleted", id))
 }
 
 #[ic_cdk::query]
 fn get_ticket(id: u64) -> Result<Ticket, Error> {
+    // Retrieve a specific ticket by ID and return it, or return a NotFound error if not found
     match _get_ticket(&id) {
         Some(ticket) => Ok(ticket),
         None => Err(Error::NotFound {
@@ -317,12 +351,13 @@ fn get_ticket(id: u64) -> Result<Ticket, Error> {
 }
 
 fn _get_ticket(id: &u64) -> Option<Ticket> {
+    // Helper function to get a ticket from the storage based on the provided ID
     TICKET_STORAGE.with(|tickets| tickets.borrow().get(id))
 }
 
 #[ic_cdk::update]
-fn create_ticket(payload: TicketPayload) -> u64 {
-    // Increment the global ID counter to get a new ID for the supplier
+fn create_ticket(payload: TicketPayload) -> Result<Ticket, AssociationError> {
+    // Increment the global ID counter to get a new ID for the ticket
     let id = ID_COUNTER
         .with(|counter| {
             let current_id = *counter.borrow().get();
@@ -330,6 +365,7 @@ fn create_ticket(payload: TicketPayload) -> u64 {
         })
         .expect("Cannot increment Ids");
 
+    // Create a new Ticket with the provided payload and the generated ID
     let ticket = Ticket {
         id,
         event_id: payload.event_id,
@@ -338,20 +374,58 @@ fn create_ticket(payload: TicketPayload) -> u64 {
         updated_at: None,
     };
 
-    TICKET_STORAGE.with(|tickets| tickets.borrow_mut().insert(id, ticket));
-    let _ = add_event_attendee(payload.event_id, payload.user_id);
-    let _ = add_user_ticket(payload.user_id, id);
-    let _ = add_event_ticket(payload.event_id, id);
+    // Insert the new ticket into the storage
+    TICKET_STORAGE.with(|tickets| tickets.borrow_mut().insert(id, ticket.clone()));
 
-    id
+    // Call helper functions to associate the ticket with the event and user
+    match add_event_attendee(payload.event_id, payload.user_id) {
+        Ok(_) => (),
+        Err(_) => {
+            return Err(AssociationError::Err {
+                msg: format!("Could not add attendee to event id:{} ", payload.event_id),
+                ticket: ticket.clone(),
+            })
+        }
+    }
+
+    match add_user_ticket(payload.user_id, id) {
+        Ok(_) => (),
+        Err(_) => {
+            return Err(AssociationError::Err {
+                msg: format!(
+                    "Could not add ticket id:{} to user id:{} ",
+                    id, payload.user_id
+                ),
+                ticket: ticket.clone(),
+            })
+        }
+    }
+
+    match add_event_ticket(payload.event_id, id) {
+        Ok(_) => (),
+        Err(_) => {
+            return Err(AssociationError::Err {
+                msg: format!(
+                    "Could not add ticket id:{} to event id:{} ",
+                    id, payload.event_id
+                ),
+                ticket: ticket.clone(),
+            })
+        }
+    }
+
+    // Return the ID of the newly created ticket
+    Ok(ticket)
 }
 
 #[ic_cdk::update]
-fn update_ticket(id: u64, payload: TicketPayload) -> Result<(), Error> {
+fn update_ticket(id: u64, payload: TicketPayload) -> Result<Ticket, Error> {
+    // Retrieve the existing ticket with the given ID, or return a NotFound error if not found
     let ticket = _get_ticket(&id).ok_or(Error::NotFound {
         msg: format!("ticket id:{} does not exist", id),
     })?;
 
+    // Create an updated ticket based on the provided payload
     let updated_ticket = Ticket {
         id,
         event_id: payload.event_id,
@@ -360,53 +434,144 @@ fn update_ticket(id: u64, payload: TicketPayload) -> Result<(), Error> {
         updated_at: Some(time()),
     };
 
-    TICKET_STORAGE.with(|tickets| tickets.borrow_mut().insert(id, updated_ticket));
+    // Call helper functions to associate the ticket with the event and user
+    if payload.user_id != ticket.user_id {
+        match add_user_ticket(payload.user_id, id) {
+            Ok(_) => (),
+            Err(_) => {
+                return Err(Error::NotCreated {
+                    msg: format!(
+                        "Could not add ticket id:{} to user id:{} ",
+                        id, payload.user_id
+                    ),
+                })
+            }
+        }
+    }
 
-    Ok(())
+    if payload.event_id != ticket.event_id {
+        match add_event_ticket(payload.event_id, id) {
+            Ok(_) => (),
+            Err(_) => {
+                return Err(Error::NotCreated {
+                    msg: format!(
+                        "Could not add ticket id:{} to event id:{} ",
+                        id, payload.event_id
+                    ),
+                })
+            }
+        }
+    }
+
+    // Insert the updated ticket into the storage
+    match TICKET_STORAGE.with(|tickets| tickets.borrow_mut().insert(id, updated_ticket.clone())) {
+        Some(_) => Ok(updated_ticket),
+        None => Err(Error::NotCreated {
+            msg: format!("ticket id:{} could not be updated", id),
+        }),
+    }
 }
 
 #[ic_cdk::update]
-fn delete_ticket(id: u64) -> Result<(), Error> {
-    _get_ticket(&id).ok_or(Error::NotFound {
-        msg: format!("ticket id:{} does not exist", id),
+fn delete_ticket(id: u64) -> Result<String, Error> {
+    // Retrieve the ticket ID from the payload
+    let ticket_id = id;
+
+    // Retrieve the ticket with the given ID, or return a NotFound error if not found
+    let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
+        msg: format!("ticket id:{} does not exist", ticket_id),
     })?;
 
-    TICKET_STORAGE.with(|tickets| tickets.borrow_mut().remove(&id));
+    // Retrieve the user with the given ID, or return a NotFound error if not found
+    let user_id = ticket.user_id;
+    let mut user = _get_user(&user_id).ok_or(Error::NotFound {
+        msg: format!("user id:{} does not exist", user_id),
+    })?;
 
-    Ok(())
+    // Remove the ticket ID from the user's ticket IDs
+    user.ticket_ids.retain(|&id| id != ticket_id);
+
+    // Update the user in the storage
+    match USER_STORAGE.with(|users| users.borrow_mut().insert(user_id, user)) {
+        Some(_) => (),
+        None => {
+            return Err(Error::NotFound {
+                msg: format!("user id:{} could not be updated", user_id),
+            })
+        }
+    }
+    // Retrieve the event with the given ID, or return a NotFound error if not found
+    let event_id = ticket.event_id;
+    let mut event = _get_event(&event_id).ok_or(Error::NotFound {
+        msg: format!("event id:{} does not exist", event_id),
+    })?;
+
+    // Remove the ticket ID from the event's ticket IDs
+    event.ticket_ids.retain(|&id| id != ticket_id);
+
+    // Update the event in the storage
+    match EVENT_STORAGE.with(|events| events.borrow_mut().insert(event_id, event)) {
+        Some(_) => (),
+        None => {
+            return Err(Error::NotFound {
+                msg: format!("event id:{} could not be updated", event_id),
+            })
+        }
+    }
+    // Delete the ticket from the storage
+    match TICKET_STORAGE.with(|tickets| tickets.borrow_mut().remove(&ticket_id)) {
+        Some(_) => (),
+        None => {
+            return Err(Error::NotFound {
+                msg: format!("ticket id:{} could not be deleted from event", ticket_id),
+            })
+        }
+    }
+    // Return Ok indicating a successful deletion
+    Ok(format!("ticket id: {} deleted", ticket_id))
 }
 
 #[ic_cdk::query]
 fn get_event_attendees(id: u64) -> Result<Vec<User>, Error> {
+    // Retrieve the event with the given ID, or return a NotFound error if not found
     let event = _get_event(&id).ok_or(Error::NotFound {
         msg: format!("event id:{} does not exist", id),
     })?;
 
+    // Initialize a vector to store the attendees
     let mut attendees = vec![];
 
+    // Iterate over the attendee IDs of the event and retrieve the corresponding users
     for attendee_id in event.attendee_ids {
         let attendee = _get_user(&attendee_id).ok_or(Error::NotFound {
             msg: format!("user id:{} does not exist", attendee_id),
         })?;
 
+        // Add the attendee to the vector
         attendees.push(attendee);
     }
 
+    // Return the vector of attendees
     Ok(attendees)
 }
 
+// Function to add an attendee to an event
 fn add_event_attendee(event_id: u64, user_id: u64) -> Result<(), Error> {
+    // Retrieve the event with the given ID, or return a NotFound error if not found
     let event = _get_event(&event_id).ok_or(Error::NotFound {
         msg: format!("event id:{} does not exist", event_id),
     })?;
 
+    // Retrieve the user with the given ID, or return a NotFound error if not found
     let user = _get_user(&user_id).ok_or(Error::NotFound {
         msg: format!("user id:{} does not exist", user_id),
     })?;
 
+    // Clone the current attendee IDs and add the new user ID
     let mut attendees = event.attendee_ids.clone();
     attendees.push(user.id);
 
+    // Create an updated event with the new attendee IDs
     let updated_event = Event {
         id: event.id,
         name: event.name,
@@ -420,23 +585,30 @@ fn add_event_attendee(event_id: u64, user_id: u64) -> Result<(), Error> {
         updated_at: Some(time()),
     };
 
+    // Update the event in the storage
     EVENT_STORAGE.with(|events| events.borrow_mut().insert(event.id, updated_event));
 
+    // Return Ok indicating a successful update
     Ok(())
 }
 
+// Function to add a ticket to an event
 fn add_event_ticket(event_id: u64, ticket_id: u64) -> Result<(), Error> {
+    // Retrieve the event with the given ID, or return a NotFound error if not found
     let event = _get_event(&event_id).ok_or(Error::NotFound {
         msg: format!("event id:{} does not exist", event_id),
     })?;
 
+    // Retrieve the ticket with the given ID, or return a NotFound error if not found
     let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
         msg: format!("ticket id:{} does not exist", ticket_id),
     })?;
 
+    // Clone the current ticket IDs and add the new ticket ID
     let mut tickets = event.ticket_ids.clone();
     tickets.push(ticket.id);
 
+    // Create an updated event with the new ticket IDs
     let updated_event = Event {
         id: event.id,
         name: event.name,
@@ -450,61 +622,83 @@ fn add_event_ticket(event_id: u64, ticket_id: u64) -> Result<(), Error> {
         updated_at: Some(time()),
     };
 
+    // Update the event in the storage
     EVENT_STORAGE.with(|events| events.borrow_mut().insert(event.id, updated_event));
 
+    // Return Ok indicating a successful update
     Ok(())
 }
 
 #[ic_cdk::query]
 fn get_user_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
+    // Retrieve the user with the given ID, or return a NotFound error if not found
     let user = _get_user(&id).ok_or(Error::NotFound {
         msg: format!("user id:{} does not exist", id),
     })?;
 
+    // Initialize a vector to store the user's tickets
     let mut tickets = vec![];
 
+    // Iterate over the ticket IDs of the user and retrieve the corresponding tickets
     for ticket_id in user.ticket_ids {
         let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
             msg: format!("ticket id:{} does not exist", ticket_id),
         })?;
 
+        // Add the ticket to the vector
         tickets.push(ticket);
     }
 
-    Ok(tickets)
+    // Return the vector of tickets
+    match tickets.len() {
+        0 => Err(Error::NotFound {
+            msg: format!("event id:{} has no tickets", id),
+        }),
+        _ => Ok(tickets),
+    }
 }
 
 #[ic_cdk::query]
 fn get_event_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
+    // Retrieve the event with the given ID, or return a NotFound error if not found
     let event = _get_event(&id).ok_or(Error::NotFound {
         msg: format!("event id:{} does not exist", id),
     })?;
 
+    // Initialize a vector to store the event's tickets
     let mut tickets = vec![];
 
+    // Iterate over the ticket IDs of the event and retrieve the corresponding tickets
     for ticket_id in event.ticket_ids {
         let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
             msg: format!("ticket id:{} does not exist", ticket_id),
         })?;
 
+        // Add the ticket to the vector
         tickets.push(ticket);
     }
 
+    // Return the vector of tickets
     Ok(tickets)
 }
 
+// Function to add a ticket to a user's tickets
 fn add_user_ticket(user_id: u64, ticket_id: u64) -> Result<(), Error> {
+    // Retrieve the user with the given ID, or return a NotFound error if not found
     let user = _get_user(&user_id).ok_or(Error::NotFound {
         msg: format!("user id:{} does not exist", user_id),
     })?;
 
+    // Retrieve the ticket with the given ID, or return a NotFound error if not found
     let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
         msg: format!("ticket id:{} does not exist", ticket_id),
     })?;
 
+    // Clone the current ticket IDs and add the new ticket ID
     let mut tickets = user.ticket_ids.clone();
     tickets.push(ticket.id);
 
+    // Create an updated user with the new ticket IDs
     let updated_user = User {
         id: user.id,
         name: user.name,
@@ -516,26 +710,43 @@ fn add_user_ticket(user_id: u64, ticket_id: u64) -> Result<(), Error> {
         updated_at: Some(time()),
     };
 
+    // Update the user in the storage
     USER_STORAGE.with(|users| users.borrow_mut().insert(user.id, updated_user));
 
+    // Return Ok indicating a successful update
     Ok(())
 }
 
 #[ic_cdk::update]
-fn remove_user_ticket(payload: TicketPayload) -> Result<(), Error> {
-    let ticket_id = payload.event_id;
+fn remove_user_ticket(payload: TicketPayload) -> Result<String, Error> {
+    // Retrieve the event ID and user ID from the payload
+    let event_id = payload.event_id;
     let user_id = payload.user_id;
+
+    // Retrieve the user with the given ID, or return a NotFound error if not found
     let user = _get_user(&user_id).ok_or(Error::NotFound {
         msg: format!("user id:{} does not exist", user_id),
     })?;
 
-    let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
-        msg: format!("ticket id:{} does not exist", ticket_id),
+    // Find the ticket with the given event ID that belongs to the user
+    let ticket_id = user.ticket_ids.iter().find(|&&ticket_id| {
+        let ticket = _get_ticket(&ticket_id);
+        ticket.is_some() && ticket.unwrap().event_id == event_id
+    });
+
+    // If the ticket is not found, return a NotFound error
+    let ticket_id = ticket_id.ok_or(Error::NotFound {
+        msg: format!(
+            "No ticket found for event id:{} for user id:{}",
+            event_id, user_id
+        ),
     })?;
 
+    // Clone the current ticket IDs and remove the specified ticket ID
     let mut tickets = user.ticket_ids.clone();
-    tickets.retain(|&ticket_id| ticket_id != ticket.id);
+    tickets.retain(|&id| id != *ticket_id);
 
+    // Create an updated user with the modified ticket IDs
     let updated_user = User {
         id: user.id,
         name: user.name,
@@ -547,15 +758,33 @@ fn remove_user_ticket(payload: TicketPayload) -> Result<(), Error> {
         updated_at: Some(time()),
     };
 
-    USER_STORAGE.with(|users| users.borrow_mut().insert(user.id, updated_user));
+    // Update the user in the storage
+    match USER_STORAGE.with(|users| users.borrow_mut().insert(user.id, updated_user)) {
+        Some(_) => (),
+        None => {
+            return Err(Error::NotFound {
+                msg: format!("user id:{} could not be deleted", user.id),
+            })
+        }
+    }
 
-    Ok(())
+    Ok(format!(
+        "ticket id: {} for event id: {} deleted",
+        ticket_id, event_id
+    ))
 }
 
 // Define an Error enum for handling errors
 #[derive(candid::CandidType, Deserialize, Serialize)]
 enum Error {
     NotFound { msg: String },
+    NotCreated { msg: String },
+}
+
+// Define an Error enum for handling errors
+#[derive(candid::CandidType, Deserialize, Serialize)]
+enum AssociationError {
+    Err { msg: String, ticket: Ticket },
 }
 
 // Candid generator for exporting the Candid interface
