@@ -1,4 +1,10 @@
-type Error = variant { NotFound : record { msg : text } };
+type AssociationError = variant {
+  Err : record { msg : text; ticket : Ticket };
+};
+type Error = variant {
+  NotFound : record { msg : text };
+  NotCreated : record { msg : text };
+};
 type Event = record {
   id : nat64;
   updated_at : opt nat64;
@@ -8,6 +14,7 @@ type Event = record {
   description : text;
   created_at : nat64;
   start_time : text;
+  ticket_ids : vec nat64;
   location : text;
 };
 type EventPayload = record {
@@ -17,13 +24,13 @@ type EventPayload = record {
   start_time : text;
   location : text;
 };
-type Result = variant { Ok; Err : Error };
-type Result_1 = variant { Ok : Event; Err : Error };
-type Result_2 = variant { Ok : vec User; Err : Error };
-type Result_3 = variant { Ok : Ticket; Err : Error };
-type Result_4 = variant { Ok : User; Err : Error };
-type Result_5 = variant { Ok : vec Event; Err : Error };
-type Result_6 = variant { Ok : vec Ticket; Err : Error };
+type Result = variant { Ok : Event; Err : Error };
+type Result_1 = variant { Ok : Ticket; Err : AssociationError };
+type Result_2 = variant { Ok : User; Err : Error };
+type Result_3 = variant { Ok : text; Err : Error };
+type Result_4 = variant { Ok : vec User; Err : Error };
+type Result_5 = variant { Ok : vec Ticket; Err : Error };
+type Result_6 = variant { Ok : Ticket; Err : Error };
 type Ticket = record {
   id : nat64;
   updated_at : opt nat64;
@@ -44,21 +51,21 @@ type User = record {
 };
 type UserPayload = record { password : text; name : text; email : text };
 service : {
-  create_event : (EventPayload) -> (nat64);
-  create_ticket : (TicketPayload) -> (nat64);
-  create_user : (UserPayload) -> (nat64);
-  delete_event : (nat64) -> (Result);
-  delete_ticket : (nat64) -> (Result);
-  delete_user : (nat64) -> (Result);
+  create_event : (EventPayload) -> (Result);
+  create_ticket : (TicketPayload) -> (Result_1);
+  create_user : (UserPayload) -> (Result_2);
+  delete_event : (nat64) -> (Result_3);
+  delete_ticket : (nat64) -> (Result_3);
+  delete_user : (nat64) -> (Result_3);
   get_all_events : () -> (vec Event) query;
-  get_event : (nat64) -> (Result_1) query;
-  get_event_attendees : (nat64) -> (Result_2) query;
-  get_ticket : (nat64) -> (Result_3) query;
-  get_user : (nat64) -> (Result_4) query;
-  get_user_events : (nat64) -> (Result_5) query;
-  get_user_tickets : (nat64) -> (Result_6) query;
-  remove_user_ticket : (nat64, nat64) -> (Result);
+  get_event : (nat64) -> (Result) query;
+  get_event_attendees : (nat64) -> (Result_4) query;
+  get_event_tickets : (nat64) -> (Result_5) query;
+  get_ticket : (nat64) -> (Result_6) query;
+  get_user : (nat64) -> (Result_2) query;
+  get_user_tickets : (nat64) -> (Result_5) query;
+  remove_user_ticket : (TicketPayload) -> (Result_3);
   update_event : (nat64, EventPayload) -> (Result);
-  update_ticket : (nat64, TicketPayload) -> (Result);
-  update_user : (nat64, UserPayload) -> (Result);
+  update_ticket : (nat64, TicketPayload) -> (Result_6);
+  update_user : (nat64, UserPayload) -> (Result_2);
 }
