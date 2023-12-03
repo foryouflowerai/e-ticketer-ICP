@@ -591,6 +591,28 @@ fn add_event_attendee(event_id: u64, user_id: u64) -> Result<(), Error> {
     // Return Ok indicating a successful update
     Ok(())
 }
+#[ic_cdk::query]
+fn search_events(query: String) -> Vec<Event> {
+    EVENT_STORAGE.with(|events| {
+        events.borrow()
+            .iter()
+            .filter(|(_, event)| event.name.contains(&query) || event.location.contains(&query))
+            .map(|(_, event)| event.clone())
+            .collect()
+    })
+}
+#[ic_cdk::query]
+fn authenticate_user(email: String, password: String) -> Result<User, Error> {
+    USER_STORAGE.with(|users| {
+        users.borrow()
+            .iter()
+            .find(|(_, user)| user.email == email && user.password == password)
+            .map(|(_, user)| user.clone())
+            .ok_or(Error::NotFound {
+                msg: "Invalid email or password".to_string(),
+            })
+    })
+}
 
 // Function to add a ticket to an event
 fn add_event_ticket(event_id: u64, ticket_id: u64) -> Result<(), Error> {
@@ -656,6 +678,20 @@ fn get_user_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
         }),
         _ => Ok(tickets),
     }
+}
+#[ic_cdk::query]
+fn validate_ticket(ticket_id: u64) -> Result<String, Error> {
+    let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
+        msg: format!("Ticket id:{} does not exist", ticket_id),
+    })?;
+    let user = _get_user(&ticket.user_id).ok_or(Error::NotFound {
+        msg: format!("User id:{} does not exist", ticket.user_id),
+    })?;
+    let event = _get_event(&ticket.event_id).ok_or(Error::NotFound {
+        msg: format!("Event id:{} does not exist", ticket.event_id),
+    })?;
+
+    Ok(format!("Ticket valid for user: {} at event: {}", user.name, event.name))
 }
 
 #[ic_cdk::query]
