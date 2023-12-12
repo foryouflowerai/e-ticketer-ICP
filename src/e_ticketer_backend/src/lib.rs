@@ -209,7 +209,7 @@ fn create_event(payload: EventPayload) -> Result<Event, Error> {
 #[ic_cdk::update]
 fn update_event(id: u64, payload: EventPayload) -> Result<Event, Error> {
     // Retrieve the existing event with the given ID, or return a NotFound error if not found
-    let event = _get_event(&id).ok_or(Error::NotFound {
+    let event = _get_event(&id).ok_or_else(|| Error::NotFound {
         msg: format!("event id:{} does not exist", id),
     })?;
 
@@ -236,19 +236,6 @@ fn update_event(id: u64, payload: EventPayload) -> Result<Event, Error> {
     }
 }
 
-#[ic_cdk::update]
-fn delete_event(id: u64) -> Result<String, Error> {
-    // Check if the event with the given ID exists, or return a NotFound error if not found
-    _get_event(&id).ok_or(Error::NotFound {
-        msg: format!("event id:{} does not exist", id),
-    })?;
-
-    // Remove the event with the given ID from the storage
-    EVENT_STORAGE.with(|events| events.borrow_mut().remove(&id));
-
-    // Return Ok indicating a successful deletion
-    Ok(format!("event id: {} deleted", id))
-}
 
 #[ic_cdk::query]
 fn get_user(id: u64) -> Result<User, Error> {
@@ -300,7 +287,7 @@ fn create_user(payload: UserPayload) -> Result<User, Error> {
 #[ic_cdk::update]
 fn update_user(id: u64, payload: UserPayload) -> Result<User, Error> {
     // Retrieve the existing user with the given ID, or return a NotFound error if not found
-    let user = _get_user(&id).ok_or(Error::NotFound {
+    let user = _get_user(&id).ok_or_else(|| Error::NotFound {
         msg: format!("user id:{} does not exist", id),
     })?;
 
@@ -325,19 +312,6 @@ fn update_user(id: u64, payload: UserPayload) -> Result<User, Error> {
     }
 }
 
-#[ic_cdk::update]
-fn delete_user(id: u64) -> Result<String, Error> {
-    // Check if the user with the given ID exists, or return a NotFound error if not found
-    _get_user(&id).ok_or(Error::NotFound {
-        msg: format!("user id:{} does not exist", id),
-    })?;
-
-    // Remove the user with the given ID from the storage
-    USER_STORAGE.with(|users| users.borrow_mut().remove(&id));
-
-    // Return Ok indicating a successful deletion
-    Ok(format!("user id: {} deleted", id))
-}
 
 #[ic_cdk::query]
 fn get_ticket(id: u64) -> Result<Ticket, Error> {
@@ -356,7 +330,16 @@ fn _get_ticket(id: &u64) -> Option<Ticket> {
 }
 
 #[ic_cdk::update]
-fn create_ticket(payload: TicketPayload) -> Result<Ticket, AssociationError> {
+fn create_ticket(payload: TicketPayload) -> Result<Ticket, Error> {
+    // Retrieve the event with the given ID, or return a NotFound error if not found
+    let event = _get_event(&payload.event_id).ok_or_else(|| Error::NotFound {
+        msg: format!("event id:{} does not exist", payload.event_id),
+    })?;
+
+    // Retrieve the user with the given ID, or return a NotFound error if not found
+    let user = _get_user(&payload.user_id).ok_or_else(|| Error::NotFound {
+        msg: format!("user id:{} does not exist", payload.user_id),
+    })?;
     // Increment the global ID counter to get a new ID for the ticket
     let id = ID_COUNTER
         .with(|counter| {
@@ -378,20 +361,20 @@ fn create_ticket(payload: TicketPayload) -> Result<Ticket, AssociationError> {
     TICKET_STORAGE.with(|tickets| tickets.borrow_mut().insert(id, ticket.clone()));
 
     // Call helper functions to associate the ticket with the event and user
-    match add_event_attendee(payload.event_id, payload.user_id) {
+    match add_event_attendee(event.clone(), user.clone()) {
         Ok(_) => (),
         Err(_) => {
-            return Err(AssociationError::Err {
+            return Err(Error::Err {
                 msg: format!("Could not add attendee to event id:{} ", payload.event_id),
                 ticket: ticket.clone(),
             })
         }
     }
 
-    match add_user_ticket(payload.user_id, id) {
+    match add_user_ticket(user.clone(), ticket.clone()) {
         Ok(_) => (),
         Err(_) => {
-            return Err(AssociationError::Err {
+            return Err(Error::Err {
                 msg: format!(
                     "Could not add ticket id:{} to user id:{} ",
                     id, payload.user_id
@@ -401,10 +384,10 @@ fn create_ticket(payload: TicketPayload) -> Result<Ticket, AssociationError> {
         }
     }
 
-    match add_event_ticket(payload.event_id, id) {
+    match add_event_ticket(event.clone(), ticket.clone()) {
         Ok(_) => (),
         Err(_) => {
-            return Err(AssociationError::Err {
+            return Err(Error::Err {
                 msg: format!(
                     "Could not add ticket id:{} to event id:{} ",
                     id, payload.event_id
@@ -419,77 +402,33 @@ fn create_ticket(payload: TicketPayload) -> Result<Ticket, AssociationError> {
 }
 
 #[ic_cdk::update]
-fn update_ticket(id: u64, payload: TicketPayload) -> Result<Ticket, Error> {
-    // Retrieve the existing ticket with the given ID, or return a NotFound error if not found
-    let ticket = _get_ticket(&id).ok_or(Error::NotFound {
-        msg: format!("ticket id:{} does not exist", id),
-    })?;
-
-    // Create an updated ticket based on the provided payload
-    let updated_ticket = Ticket {
-        id,
-        event_id: payload.event_id,
-        user_id: payload.user_id,
-        created_at: ticket.created_at,
-        updated_at: Some(time()),
-    };
-
-    // Call helper functions to associate the ticket with the event and user
-    if payload.user_id != ticket.user_id {
-        match add_user_ticket(payload.user_id, id) {
-            Ok(_) => (),
-            Err(_) => {
-                return Err(Error::NotCreated {
-                    msg: format!(
-                        "Could not add ticket id:{} to user id:{} ",
-                        id, payload.user_id
-                    ),
-                })
-            }
-        }
-    }
-
-    if payload.event_id != ticket.event_id {
-        match add_event_ticket(payload.event_id, id) {
-            Ok(_) => (),
-            Err(_) => {
-                return Err(Error::NotCreated {
-                    msg: format!(
-                        "Could not add ticket id:{} to event id:{} ",
-                        id, payload.event_id
-                    ),
-                })
-            }
-        }
-    }
-
-    // Insert the updated ticket into the storage
-    match TICKET_STORAGE.with(|tickets| tickets.borrow_mut().insert(id, updated_ticket.clone())) {
-        Some(_) => Ok(updated_ticket),
-        None => Err(Error::NotCreated {
-            msg: format!("ticket id:{} could not be updated", id),
-        }),
-    }
-}
-
-#[ic_cdk::update]
 fn delete_ticket(id: u64) -> Result<String, Error> {
     // Retrieve the ticket ID from the payload
     let ticket_id = id;
 
     // Retrieve the ticket with the given ID, or return a NotFound error if not found
-    let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
+    let ticket = _get_ticket(&ticket_id).ok_or_else(|| Error::NotFound {
         msg: format!("ticket id:{} does not exist", ticket_id),
     })?;
 
     // Retrieve the user with the given ID, or return a NotFound error if not found
     let user_id = ticket.user_id;
-    let mut user = _get_user(&user_id).ok_or(Error::NotFound {
+    let mut user = _get_user(&user_id).ok_or_else(|| Error::NotFound {
         msg: format!("user id:{} does not exist", user_id),
     })?;
 
+    // Retrieve the event with the given ID, or return a NotFound error if not found
+    let event_id = ticket.event_id;
+    let mut event = _get_event(&event_id).ok_or_else(|| Error::NotFound {
+        msg: format!("event id:{} does not exist", event_id),
+    })?;
+
+
     // Remove the ticket ID from the user's ticket IDs
     user.ticket_ids.retain(|&id| id != ticket_id);
+
+    // Remove the ticket ID from the event's ticket IDs
+    event.ticket_ids.retain(|&id| id != ticket_id);
 
     // Update the user in the storage
     match USER_STORAGE.with(|users| users.borrow_mut().insert(user_id, user)) {
@@ -500,14 +439,6 @@ fn delete_ticket(id: u64) -> Result<String, Error> {
             })
         }
     }
-    // Retrieve the event with the given ID, or return a NotFound error if not found
-    let event_id = ticket.event_id;
-    let mut event = _get_event(&event_id).ok_or(Error::NotFound {
-        msg: format!("event id:{} does not exist", event_id),
-    })?;
-
-    // Remove the ticket ID from the event's ticket IDs
-    event.ticket_ids.retain(|&id| id != ticket_id);
 
     // Update the event in the storage
     match EVENT_STORAGE.with(|events| events.borrow_mut().insert(event_id, event)) {
@@ -534,7 +465,7 @@ fn delete_ticket(id: u64) -> Result<String, Error> {
 #[ic_cdk::query]
 fn get_event_attendees(id: u64) -> Result<Vec<User>, Error> {
     // Retrieve the event with the given ID, or return a NotFound error if not found
-    let event = _get_event(&id).ok_or(Error::NotFound {
+    let event = _get_event(&id).ok_or_else(|| Error::NotFound {
         msg: format!("event id:{} does not exist", id),
     })?;
 
@@ -543,7 +474,7 @@ fn get_event_attendees(id: u64) -> Result<Vec<User>, Error> {
 
     // Iterate over the attendee IDs of the event and retrieve the corresponding users
     for attendee_id in event.attendee_ids {
-        let attendee = _get_user(&attendee_id).ok_or(Error::NotFound {
+        let attendee = _get_user(&attendee_id).ok_or_else(|| Error::NotFound {
             msg: format!("user id:{} does not exist", attendee_id),
         })?;
 
@@ -556,15 +487,15 @@ fn get_event_attendees(id: u64) -> Result<Vec<User>, Error> {
 }
 
 // Function to add an attendee to an event
-fn add_event_attendee(event_id: u64, user_id: u64) -> Result<(), Error> {
+fn add_event_attendee(event: Event, user: User) -> Result<(), Error> {
     // Retrieve the event with the given ID, or return a NotFound error if not found
-    let event = _get_event(&event_id).ok_or(Error::NotFound {
-        msg: format!("event id:{} does not exist", event_id),
+    let event = _get_event(&event.id).ok_or_else(|| Error::NotFound {
+        msg: format!("event id:{} does not exist", event.id),
     })?;
 
     // Retrieve the user with the given ID, or return a NotFound error if not found
-    let user = _get_user(&user_id).ok_or(Error::NotFound {
-        msg: format!("user id:{} does not exist", user_id),
+    let user = _get_user(&user.id).ok_or_else(|| Error::NotFound {
+        msg: format!("user id:{} does not exist", user.id),
     })?;
 
     // Clone the current attendee IDs and add the new user ID
@@ -593,16 +524,7 @@ fn add_event_attendee(event_id: u64, user_id: u64) -> Result<(), Error> {
 }
 
 // Function to add a ticket to an event
-fn add_event_ticket(event_id: u64, ticket_id: u64) -> Result<(), Error> {
-    // Retrieve the event with the given ID, or return a NotFound error if not found
-    let event = _get_event(&event_id).ok_or(Error::NotFound {
-        msg: format!("event id:{} does not exist", event_id),
-    })?;
-
-    // Retrieve the ticket with the given ID, or return a NotFound error if not found
-    let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
-        msg: format!("ticket id:{} does not exist", ticket_id),
-    })?;
+fn add_event_ticket(event: Event, ticket: Ticket) -> Result<(), Error> {
 
     // Clone the current ticket IDs and add the new ticket ID
     let mut tickets = event.ticket_ids.clone();
@@ -632,7 +554,7 @@ fn add_event_ticket(event_id: u64, ticket_id: u64) -> Result<(), Error> {
 #[ic_cdk::query]
 fn get_user_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
     // Retrieve the user with the given ID, or return a NotFound error if not found
-    let user = _get_user(&id).ok_or(Error::NotFound {
+    let user = _get_user(&id).ok_or_else(|| Error::NotFound {
         msg: format!("user id:{} does not exist", id),
     })?;
 
@@ -641,7 +563,7 @@ fn get_user_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
 
     // Iterate over the ticket IDs of the user and retrieve the corresponding tickets
     for ticket_id in user.ticket_ids {
-        let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
+        let ticket = _get_ticket(&ticket_id).ok_or_else(|| Error::NotFound {
             msg: format!("ticket id:{} does not exist", ticket_id),
         })?;
 
@@ -661,7 +583,7 @@ fn get_user_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
 #[ic_cdk::query]
 fn get_event_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
     // Retrieve the event with the given ID, or return a NotFound error if not found
-    let event = _get_event(&id).ok_or(Error::NotFound {
+    let event = _get_event(&id).ok_or_else(|| Error::NotFound {
         msg: format!("event id:{} does not exist", id),
     })?;
 
@@ -670,7 +592,7 @@ fn get_event_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
 
     // Iterate over the ticket IDs of the event and retrieve the corresponding tickets
     for ticket_id in event.ticket_ids {
-        let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
+        let ticket = _get_ticket(&ticket_id).ok_or_else(|| Error::NotFound {
             msg: format!("ticket id:{} does not exist", ticket_id),
         })?;
 
@@ -683,16 +605,7 @@ fn get_event_tickets(id: u64) -> Result<Vec<Ticket>, Error> {
 }
 
 // Function to add a ticket to a user's tickets
-fn add_user_ticket(user_id: u64, ticket_id: u64) -> Result<(), Error> {
-    // Retrieve the user with the given ID, or return a NotFound error if not found
-    let user = _get_user(&user_id).ok_or(Error::NotFound {
-        msg: format!("user id:{} does not exist", user_id),
-    })?;
-
-    // Retrieve the ticket with the given ID, or return a NotFound error if not found
-    let ticket = _get_ticket(&ticket_id).ok_or(Error::NotFound {
-        msg: format!("ticket id:{} does not exist", ticket_id),
-    })?;
+fn add_user_ticket(user: User, ticket: Ticket) -> Result<(), Error> {
 
     // Clone the current ticket IDs and add the new ticket ID
     let mut tickets = user.ticket_ids.clone();
@@ -717,75 +630,15 @@ fn add_user_ticket(user_id: u64, ticket_id: u64) -> Result<(), Error> {
     Ok(())
 }
 
-#[ic_cdk::update]
-fn remove_user_ticket(payload: TicketPayload) -> Result<String, Error> {
-    // Retrieve the event ID and user ID from the payload
-    let event_id = payload.event_id;
-    let user_id = payload.user_id;
-
-    // Retrieve the user with the given ID, or return a NotFound error if not found
-    let user = _get_user(&user_id).ok_or(Error::NotFound {
-        msg: format!("user id:{} does not exist", user_id),
-    })?;
-
-    // Find the ticket with the given event ID that belongs to the user
-    let ticket_id = user.ticket_ids.iter().find(|&&ticket_id| {
-        let ticket = _get_ticket(&ticket_id);
-        ticket.is_some() && ticket.unwrap().event_id == event_id
-    });
-
-    // If the ticket is not found, return a NotFound error
-    let ticket_id = ticket_id.ok_or(Error::NotFound {
-        msg: format!(
-            "No ticket found for event id:{} for user id:{}",
-            event_id, user_id
-        ),
-    })?;
-
-    // Clone the current ticket IDs and remove the specified ticket ID
-    let mut tickets = user.ticket_ids.clone();
-    tickets.retain(|&id| id != *ticket_id);
-
-    // Create an updated user with the modified ticket IDs
-    let updated_user = User {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        password: user.password,
-        event_ids: user.event_ids,
-        ticket_ids: tickets,
-        created_at: user.created_at,
-        updated_at: Some(time()),
-    };
-
-    // Update the user in the storage
-    match USER_STORAGE.with(|users| users.borrow_mut().insert(user.id, updated_user)) {
-        Some(_) => (),
-        None => {
-            return Err(Error::NotFound {
-                msg: format!("user id:{} could not be deleted", user.id),
-            })
-        }
-    }
-
-    Ok(format!(
-        "ticket id: {} for event id: {} deleted",
-        ticket_id, event_id
-    ))
-}
 
 // Define an Error enum for handling errors
 #[derive(candid::CandidType, Deserialize, Serialize)]
 enum Error {
     NotFound { msg: String },
     NotCreated { msg: String },
-}
-
-// Define an Error enum for handling errors
-#[derive(candid::CandidType, Deserialize, Serialize)]
-enum AssociationError {
     Err { msg: String, ticket: Ticket },
 }
+
 
 // Candid generator for exporting the Candid interface
 ic_cdk::export_candid!();
